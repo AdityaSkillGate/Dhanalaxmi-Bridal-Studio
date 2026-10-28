@@ -34,6 +34,7 @@
 
   /* ---------- links ---------- */
   $$("[data-ig]").forEach(a => a.href = C.instagram[a.dataset.ig]);
+  $$("a[aria-label='Facebook']").forEach(a => { if (C.facebook) a.href = C.facebook; });
   ["#dir-link", "#loc-link"].forEach(s => { const a = $(s); if (a) a.href = C.directionsUrl; });
   $("#year").textContent = new Date().getFullYear();
   const waUrl = text => `https://wa.me/${C.whatsappNumber}?text=${encodeURIComponent(text)}`;
@@ -112,16 +113,133 @@
   let sx = 0; lb.addEventListener("touchstart", e => sx = e.touches[0].clientX, { passive: true });
   lb.addEventListener("touchend", e => { const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 50) step(d < 0 ? 1 : -1); });
 
-  /* ---------- before / after (auto demo, then user control) ---------- */
-  const ba = $("#ba"), range = $(".ba-range", ba); let touched = false;
-  const setPos = v => { ba.style.setProperty("--pos", v + "%"); range.value = v; };
-  range.addEventListener("input", () => { touched = true; setPos(range.value); });
-  ["pointerdown", "keydown"].forEach(ev => ba.addEventListener(ev, () => touched = true));
-  new IntersectionObserver((es, o) => { if (!es[0].isIntersecting || reduce) return; o.disconnect();
-    const t0 = performance.now(), path = [50, 18, 82, 50], seg = 1100;
-    (function tick(now) { if (touched) return; const k = (now - t0) / seg, i = Math.floor(k); if (i >= path.length - 1) return setPos(50);
-      const f = k - i, e = f < .5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2; setPos(path[i] + (path[i + 1] - path[i]) * e); requestAnimationFrame(tick); })(t0);
-  }, { threshold: .6 }).observe(ba);
+  /* ---------- before / after slider ---------- */
+  const ba = $("#ba");
+  if (ba) {
+    const range = $(".ba-range", ba);
+    if (range) {
+      range.addEventListener("input", () => ba.style.setProperty("--pos", range.value + "%"));
+    }
+  }
+
+  /* ---------- reels carousel ---------- */
+  const rTrack = $("#reelsTrack"), rPrev = $("#reelsPrev"), rNext = $("#reelsNext");
+  if (rTrack && rPrev && rNext) {
+    rPrev.addEventListener("click", () => rTrack.scrollBy({ left: -320, behavior: "smooth" }));
+    rNext.addEventListener("click", () => rTrack.scrollBy({ left: 320, behavior: "smooth" }));
+  }
+
+  /* ---------- floating polaroid reviews gallery & modal ---------- */
+  const reviewModal = $("#reviewModal");
+  let activeRevId = 1;
+  let prevActiveElement = null;
+
+  const reviewMap = {
+    1: {
+      captionKey: "rev.1.caption",
+      metaKey: "rev.1.meta",
+      altShotKey: "rev.alt.1",
+      shot: "assets/images/review-1.webp",
+      look: "assets/images/hair-purple-lg.webp",
+      lookAltKey: "alt.hair"
+    },
+    2: {
+      captionKey: "rev.2.caption",
+      metaKey: "rev.2.meta",
+      altShotKey: "rev.alt.2",
+      shot: "assets/images/review-2.webp",
+      look: "assets/images/hair-floral-back-lg.webp",
+      lookAltKey: "alt.hair"
+    },
+    3: {
+      captionKey: "rev.3.caption",
+      metaKey: "rev.3.meta",
+      altShotKey: "rev.alt.3",
+      shot: "assets/images/review-3.webp",
+      look: "assets/images/artist-at-work-lg.webp",
+      lookAltKey: "alt.artist"
+    }
+  };
+
+  function openReview(id) {
+    const item = reviewMap[id];
+    if (!item || !reviewModal) return;
+    activeRevId = id;
+
+    const rmTitle = $("#rmTitle"), rmSub = $("#rmSub"), rmShot = $("#rmShot"), rmLook = $("#rmLook");
+    if (rmTitle) {
+      rmTitle.dataset.i18n = item.captionKey;
+      rmTitle.textContent = t(item.captionKey);
+    }
+    if (rmSub) {
+      rmSub.dataset.i18n = item.metaKey;
+      rmSub.textContent = t(item.metaKey);
+    }
+    if (rmShot) {
+      rmShot.src = item.shot;
+      rmShot.dataset.i18nAlt = item.altShotKey;
+      rmShot.alt = t(item.altShotKey);
+    }
+    if (rmLook) {
+      rmLook.src = item.look;
+      rmLook.dataset.i18nAlt = item.lookAltKey;
+      rmLook.alt = t(item.lookAltKey);
+    }
+
+    prevActiveElement = document.activeElement;
+    if (typeof reviewModal.showModal === "function") {
+      try { reviewModal.showModal(); } catch (e) { reviewModal.setAttribute("open", ""); }
+    } else {
+      reviewModal.setAttribute("open", "");
+    }
+    document.body.style.overflow = "hidden";
+    const closeBtn = $(".rm-close", reviewModal);
+    if (closeBtn) closeBtn.focus();
+  }
+
+  function closeReview() {
+    if (!reviewModal) return;
+    if (typeof reviewModal.close === "function") {
+      try { reviewModal.close(); } catch (e) { reviewModal.removeAttribute("open"); }
+    } else {
+      reviewModal.removeAttribute("open");
+    }
+    document.body.style.overflow = "";
+    if (prevActiveElement && typeof prevActiveElement.focus === "function") {
+      prevActiveElement.focus();
+    }
+  }
+
+  $$(".polaroid-card").forEach(card => {
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-haspopup", "dialog");
+    const id = card.dataset.revId;
+    card.addEventListener("click", () => openReview(id));
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openReview(id);
+      }
+    });
+  });
+
+  if (reviewModal) {
+    reviewModal.addEventListener("click", e => {
+      if (e.target.matches('[data-rm="close"]') || e.target.closest('[data-rm="close"]')) {
+        closeReview();
+      }
+    });
+    reviewModal.addEventListener("cancel", e => {
+      e.preventDefault();
+      closeReview();
+    });
+    window.addEventListener("keydown", e => {
+      if (e.key === "Escape" && reviewModal.hasAttribute("open")) {
+        closeReview();
+      }
+    });
+  }
 
   /* ---------- quote band: words light up on scroll ---------- */
   const band = $("#band");
@@ -165,8 +283,8 @@
     if (dateEl.value) { const [y, m, d] = dateEl.value.split("-"); L.push(`${t("wa.date")}: ${d}/${m}/${y}`); }
     if ($("#f-loc").value.trim()) L.push(`${t("wa.location")}: ${$("#f-loc").value.trim()}`);
     if ($("#f-msg").value.trim()) L.push(`${t("wa.message")}: ${$("#f-msg").value.trim()}`);
-    const url = waUrl(L.join("\n")), w = window.open(url, "_blank");
-    if (w) { w.opener = null; status.textContent = t("st.ok"); } else { status.className = "status warn"; status.innerHTML = `${t("st.fail")} <a href="${url}" target="_blank" rel="noopener noreferrer">${t("st.link")}</a>`; }
+    const url = waUrl(L.join("\n")), w = window.open(url, "_blank", "noopener");
+    if (w) status.textContent = t("st.ok"); else { status.className = "status warn"; status.innerHTML = `${t("st.fail")} <a href="${url}" target="_blank" rel="noopener noreferrer">${t("st.link")}</a>`; }
   });
   ["#f-name", "#f-phone", "#f-date"].forEach(s => $(s).addEventListener("input", () => { if ($(s).closest(".field").classList.contains("bad")) validate(stepN); }));
 
